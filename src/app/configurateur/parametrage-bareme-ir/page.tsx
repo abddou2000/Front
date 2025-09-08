@@ -13,7 +13,7 @@ import {
 import "animate.css";
 import { SuccessToast } from "../../components/SuccessToast";
 import { ConfirmDeleteModal } from "../../components/ConfirmDeleteModal";
-// Sidebar handled by layout.tsx
+
 // --- helpers ---
 function addOneDay(dateString: string): string {
   if (!dateString) return "";
@@ -38,6 +38,16 @@ function isBetweenExclusive(target: string, start: string, end: string) {
   const s = new Date(start).getTime();
   const e = new Date(end).getTime();
   return t >= s && t < e; // ≥ start && < end
+}
+// NEW: format d’affichage JJ-MM-AAAA
+function formatDateFR(d?: string) {
+  if (!d) return "";
+  const t = new Date(d);
+  if (Number.isNaN(t.getTime())) return "";
+  const dd = String(t.getDate()).padStart(2, "0");
+  const mm = String(t.getMonth() + 1).padStart(2, "0");
+  const yyyy = t.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
 }
 
 export default function Page() {
@@ -268,7 +278,7 @@ export default function Page() {
   // --- view helpers ---
   const dateCell = (value: string) => (
     <span className="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium bg-slate-100 text-slate-700">
-      {value || "—"}
+      {value ? formatDateFR(value) : "—"}
     </span>
   );
 
@@ -312,7 +322,7 @@ export default function Page() {
             </button>
           </div>
 
-          {/* Carte + header comme ta maquette avec bouton à droite */}
+          {/* Carte + header */}
           <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-100">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-800">
@@ -568,15 +578,13 @@ export default function Page() {
                     if (delimTarget) setDelimError(validateDelimDate(v, delimTarget) || "");
                   }}
                 />
-                {delimTarget && (
-                  <p className="mt-1 text-[11px] text-gray-500">
-                    Période actuelle : <b>{toISO(delimTarget.startDate)}</b> → <b>{toISO(delimTarget.endDate)}</b>. La date choisie doit être ≥ début et &lt; fin actuelle.
-                  </p>
-                )}
                 {delimError && <p className="mt-2 text-xs text-red-600">{delimError}</p>}
               </div>
+              {/* NEW: message sans trou après "le" */}
               <p className="text-xs text-gray-500">
-                Un nouvel enregistrement démarrera le <b>{addOneDay(delimEndDate || "")}</b>. Vous pourrez le modifier immédiatement.
+                {delimEndDate
+                  ? <>Un nouvel enregistrement démarrera le <b>{formatDateFR(addOneDay(delimEndDate))}</b>. Vous pourrez le modifier immédiatement.</>
+                  : <>Le nouvel enregistrement démarrera le <i>lendemain</i> de la date que vous choisirez. Vous pourrez le modifier immédiatement.</>}
               </p>
             </div>
             <div className="mt-6 flex items-center gap-3 justify-end">

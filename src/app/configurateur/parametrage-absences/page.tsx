@@ -4,6 +4,7 @@ import "animate.css";
 import { SuccessToast } from "../../components/SuccessToast";
 import { ConfirmDeleteModal } from "../../components/ConfirmDeleteModal";
 import { CalendarClock, Plus, Edit3, Trash2, Save, X } from "lucide-react";
+
 // Sidebar handled by layout.tsx
 
 function addOneDay(dateString: string): string {
@@ -29,6 +30,17 @@ function isBetweenExclusive(target: string, start: string, end: string) {
   const s = new Date(start).getTime();
   const e = new Date(end).getTime();
   return t >= s && t < e; // ≥ start && < end
+}
+
+// NEW: formatteur FR JJ-MM-AAAA pour l’affichage
+function formatDateFR(d?: string) {
+  if (!d) return "";
+  const t = new Date(d);
+  if (Number.isNaN(t.getTime())) return "";
+  const dd = String(t.getDate()).padStart(2, "0");
+  const mm = String(t.getMonth() + 1).padStart(2, "0");
+  const yyyy = t.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
 }
 
 export default function Page() {
@@ -210,9 +222,10 @@ export default function Page() {
     });
   };
 
+  // NEW: toutes les cellules de date affichent JJ-MM-AAAA
   const dateCell = (value: string) => (
     <span className="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium bg-slate-100 text-slate-700">
-      {value || "—"}
+      {value ? formatDateFR(value) : "—"}
     </span>
   );
 
@@ -222,25 +235,25 @@ export default function Page() {
         <div className="max-w-7xl mx-auto">
           {/* Barre d'actions au-dessus du titre */}
           {/* En-tête avec spacer mobile pour l'icône hamburger */}
-<div className="flex flex-wrap items-center justify-between gap-3">
-  <div className="flex items-center gap-2">
-    <div aria-hidden className="w-10 h-10 shrink-0 sm:hidden" />
-    <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
-      Paramétrage des absences
-    </h1>
-  </div>
-</div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <div aria-hidden className="w-10 h-10 shrink-0 sm:hidden" />
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
+                Paramétrage des absences
+              </h1>
+            </div>
+          </div>
 
-{/* Barre d'actions SOUS le titre */}
-<div className="mt-2 sm:mt-3 mb-4 sm:mb-6">
-  <button
-    onClick={openCreate}
-    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-semibold shadow"
-  >
-    <Plus className="h-4 w-4" />
-    Créer
-  </button>
-</div>
+          {/* Barre d'actions SOUS le titre */}
+          <div className="mt-2 sm:mt-3 mb-4 sm:mb-6">
+            <button
+              onClick={openCreate}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-semibold shadow"
+            >
+              <Plus className="h-4 w-4" />
+              Créer
+            </button>
+          </div>
 
           <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-100">
             <div className="overflow-x-auto">
@@ -259,10 +272,7 @@ export default function Page() {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {absences.map((row) => (
-                    <tr
-                      key={row.id}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
+                    <tr key={row.id} className="hover:bg-gray-50 transition-colors">
                       <td className="py-3 px-4 font-semibold text-gray-800">
                         {row.nom}
                       </td>
@@ -307,10 +317,7 @@ export default function Page() {
                   ))}
                   {absences.length === 0 && (
                     <tr>
-                      <td
-                        colSpan={8}
-                        className="py-8 text-center text-gray-500"
-                      >
+                      <td colSpan={8} className="py-8 text-center text-gray-500">
                         Aucune donnée à afficher.
                       </td>
                     </tr>
@@ -516,10 +523,7 @@ export default function Page() {
             aria-labelledby="delim-title"
           >
             <div className="flex items-center justify-between mb-4">
-              <h3
-                id="delim-title"
-                className="text-lg font-semibold text-gray-800"
-              >
+              <h3 id="delim-title" className="text-lg font-semibold text-gray-800">
                 Délimiter la période
               </h3>
               <button
@@ -551,21 +555,15 @@ export default function Page() {
                     }
                   }}
                 />
-                {delimTarget && (
-                  <p className="mt-1 text-[11px] text-gray-500">
-                    Période actuelle : <b>{toISO(delimTarget.startDate)}</b> →
-                    <b> {toISO(delimTarget.endDate)}</b>. La date choisie doit
-                    être ≥ début et &lt; fin actuelle.
-                  </p>
-                )}
                 {delimError && (
                   <p className="mt-2 text-xs text-red-600">{delimError}</p>
                 )}
               </div>
+              {/* NEW: message conditionnel sans blanc après "le" */}
               <p className="text-xs text-gray-500">
-                Un nouvel enregistrement démarrera le{" "}
-                <b>{addOneDay(delimEndDate || "")}</b>. Vous pourrez le modifier
-                immédiatement.
+                {delimEndDate
+                  ? <>Un nouvel enregistrement démarrera le <b>{formatDateFR(addOneDay(delimEndDate))}</b>. Vous pourrez le modifier immédiatement.</>
+                  : <>Le nouvel enregistrement démarrera le <i>lendemain</i> de la date que vous choisirez. Vous pourrez le modifier immédiatement.</>}
               </p>
             </div>
             <div className="mt-6 flex items-center gap-3 justify-end">

@@ -18,7 +18,6 @@ import {
 import { SuccessToast } from "../../components/SuccessToast";
 import { ConfirmDeleteModal } from "../../components/ConfirmDeleteModal";
 
-
 // --- helpers dates ---
 function addOneDay(dateString: string): string {
   if (!dateString) return "";
@@ -43,6 +42,17 @@ function isBetweenExclusive(target: string, start: string, end: string) {
   const s = new Date(start).getTime();
   const e = new Date(end).getTime();
   return t >= s && t < e; // ≥ start && < end
+}
+
+// NEW: formateur FR JJ-MM-AAAA
+function formatDateFR(d?: string) {
+  if (!d) return "";
+  const t = new Date(d);
+  if (Number.isNaN(t.getTime())) return "";
+  const dd = String(t.getDate()).padStart(2, "0");
+  const mm = String(t.getMonth() + 1).padStart(2, "0");
+  const yyyy = t.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
 }
 
 export default function Page() {
@@ -241,9 +251,10 @@ export default function Page() {
     };
   }, [activeTab, types, cotisations]);
 
+  // NEW: affichage FR dans le tableau
   const dateCell = (value: string) => (
     <span className="inline-flex items-center rounded-md px-2 py-1 text-[11px] md:text-xs font-medium bg-slate-100 text-slate-700">
-      {value || "—"}
+      {value ? formatDateFR(value) : "—"}
     </span>
   );
 
@@ -310,12 +321,11 @@ export default function Page() {
             r.id === targetId ? { ...r, endDate: newEndDate } : r
           );
           // b) on crée la nouvelle entrée à partir des CHAMPS MODIFIÉS (formValues)
+          const base = prev.find((r) => r.id === targetId);
           const newEntry: TypeCotisation = {
             id: Date.now(),
-            nom: formValues.nom ?? (prev.find((r) => r.id === targetId)?.nom || ""),
-            description:
-              formValues.description ??
-              (prev.find((r) => r.id === targetId)?.description || ""),
+            nom: formValues.nom ?? (base?.nom || ""),
+            description: formValues.description ?? (base?.description || ""),
             startDate: addOneDay(newEndDate),
             endDate: originalEndDate,
           };
@@ -331,11 +341,10 @@ export default function Page() {
           // b) on crée la nouvelle entrée depuis les VALEURS MODIFIÉES
           const newEntry: Cotisation = {
             id: Date.now(),
-              code: formValues.code ?? (base?.code || ""),
+            code: formValues.code ?? (base?.code || ""),
             typeId: Number(
               formValues.typeId ?? (base ? base.typeId : types[0]?.id ?? 0)
             ),
-          
             nom: formValues.nom ?? (base?.nom || ""),
             tauxSalarial: Number(
               formValues.tauxSalarial ?? (base?.tauxSalarial || 0)
@@ -416,7 +425,7 @@ export default function Page() {
                   className="inline-flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-2 text-sm font-semibold shadow"
                 >
                   <Plus className="h-4 w-4" />
-                  {activeTab === "types" ? "Créer type" : "Créer cotisation"}
+                  {activeTab === "types" ? "Créer" : "Créer"}
                 </button>
               </div>
             </div>
@@ -434,7 +443,6 @@ export default function Page() {
                       </>
                     ) : (
                       <>
-                      
                         <th>Code</th>
                         <th>Type</th>
                         <th>Nom</th>
@@ -493,13 +501,12 @@ export default function Page() {
                   {activeTab === "cotisations" &&
                     cotisations.map((row) => (
                       <tr key={row.id} className="hover:bg-gray-50 transition-colors">
-                         <td className="py-3 px-3 sm:px-4 font-semibold text-gray-800">
+                        <td className="py-3 px-3 sm:px-4 font-semibold text-gray-800">
                           {row.code}
                         </td>
                         <td className="py-3 px-3 sm:px-4 text-gray-700">
                           {types.find((t) => t.id === row.typeId)?.nom || "—"}
                         </td>
-                       
                         <td className="py-3 px-3 sm:px-4 text-gray-700">{row.nom}</td>
                         <td className="py-3 px-3 sm:px-4 text-gray-700 hidden lg:table-cell">
                           {row.tauxSalarial}%
@@ -849,7 +856,7 @@ export default function Page() {
             onClick={() => setIsDelimOpen(false)}
           />
           <div
-            className="relative bg-white w-[95%] sm:w-full max-w-md rounded-xl shadow-lg p-4 sm:p-6 animate__animated animate__fadeInUp max-h-[90vh] overflow-y-auto"
+            className="relative bg-white w-[95%] sm:w/full max-w-md rounded-xl shadow-lg p-4 sm:p-6 animate__animated animate__fadeInUp max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -875,7 +882,8 @@ export default function Page() {
                 </label>
                 <input
                   type="date"
-                  max={delimTarget ? toISO(addOneDay(delimTarget.endDate || "")) : undefined}
+                  // NEW: max = fin actuelle ; la validation assure "< fin"
+                  max={delimTarget ? toISO(delimTarget.endDate || "") : undefined}
                   className={`w-full h-11 rounded-lg border ${
                     delimError ? "border-red-400" : "border-gray-200"
                   } bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500`}
@@ -889,21 +897,16 @@ export default function Page() {
                     }
                   }}
                 />
-                {delimTarget && (
-                  <p className="mt-1 text-[11px] text-gray-500">
-                    Période actuelle : <b>{toISO(delimTarget.startDate)}</b> →{" "}
-                    <b>{toISO(delimTarget.endDate)}</b>. La date choisie doit
-                    être ≥ début et &lt; fin actuelle.
-                  </p>
-                )}
                 {delimError && (
                   <p className="mt-2 text-xs text-red-600">{delimError}</p>
                 )}
               </div>
+
+              {/* NEW: message conditionnel sans blanc */}
               <p className="text-xs text-gray-500">
-                Après validation, l’entrée actuelle s’arrête à cette date et une nouvelle
-                version est créée à partir du lendemain. La modification est obligatoire
-                et les champs modifiés seront pris en compte pour la 2ᵉ entrée.
+                {delimEndDate
+                  ? <>Un nouvel enregistrement démarrera le <b>{formatDateFR(addOneDay(delimEndDate))}</b>. Vous pourrez le modifier immédiatement.</>
+                  : <>Le nouvel enregistrement démarrera le <i>lendemain</i> de la date que vous choisirez. Vous pourrez le modifier immédiatement.</>}
               </p>
             </div>
             <div className="mt-5 sm:mt-6 flex items-center gap-2 sm:gap-3 justify-end">

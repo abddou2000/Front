@@ -8,7 +8,15 @@ export default function Page() {
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
   // --- états contrôlés pour chaque tuile ---
-  const [bulletinInfo, setBulletinInfo] = useState({
+  type BulletinInfoState = {
+    cnssSociete: boolean;
+    idFiscalSociete: boolean;
+    iceSociete: boolean;
+    cnssEmploye: boolean;
+    cimrEmploye: boolean;
+  };
+
+  const [bulletinInfo, setBulletinInfo] = useState<BulletinInfoState>({
     cnssSociete: true,
     idFiscalSociete: true,
     iceSociete: true,
@@ -30,7 +38,9 @@ export default function Page() {
     { name: "AMO", show: true },
   ]);
 
-  const [journalHeader, setJournalHeader] = useState({
+  // Journal de paie
+  type JournalHeaderState = { dateGeneration: boolean; heure: boolean; devise: boolean };
+  const [journalHeader, setJournalHeader] = useState<JournalHeaderState>({
     dateGeneration: true,
     heure: true,
     devise: true,
@@ -60,8 +70,6 @@ export default function Page() {
   const markDirty = () => setDirty(true);
 
   const handleSave = () => {
-    // Ici: call API / persist config
-    // console.log({ bulletinInfo, bulletinRubriques, bulletinCotisations, journalHeader, journalRubriques, attestSalaire, attestTravail });
     setDirty(false);
     setSaveMsg("Modifications sauvegardées");
     setTimeout(() => setSaveMsg(null), 2000);
@@ -93,6 +101,73 @@ export default function Page() {
     </label>
   );
 
+  // ---------- Onglets Bulletin de paie ----------
+  type BulletinTab = "info" | "rubriques" | "cotisations";
+  const [bulletinTab, setBulletinTab] = useState<BulletinTab>("info");
+
+  const BulletinTabs = () => (
+    <div className="mb-4">
+      <div className="inline-flex flex-wrap gap-2 border-b border-gray-200 pb-2">
+        <button
+          className={`px-3 py-2 text-sm font-semibold rounded-md ${bulletinTab === "info" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
+          onClick={() => setBulletinTab("info")}
+        >
+          Informations société & salarié
+        </button>
+        <button
+          className={`px-3 py-2 text-sm font-semibold rounded-md ${bulletinTab === "rubriques" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
+          onClick={() => setBulletinTab("rubriques")}
+        >
+          Rubriques disponibles
+        </button>
+        <button
+          className={`px-3 py-2 text-sm font-semibold rounded-md ${bulletinTab === "cotisations" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
+          onClick={() => setBulletinTab("cotisations")}
+        >
+          Cotisations
+        </button>
+      </div>
+    </div>
+  );
+
+  // définitions pour l'onglet Info (table avec en-tête)
+  const infoDefs: { key: keyof BulletinInfoState; label: string }[] = [
+    { key: "cnssSociete", label: "Numéro CNSS société" },
+    { key: "idFiscalSociete", label: "ID Fiscal société" },
+    { key: "iceSociete", label: "Numéro ICE société" },
+    { key: "cnssEmploye", label: "Numéro CNSS employé" },
+    { key: "cimrEmploye", label: "Numéro CIMR employé" },
+  ];
+
+  // ---------- Onglets Journal de paie ----------
+  type JournalTab = "header" | "rubriques";
+  const [journalTab, setJournalTab] = useState<JournalTab>("header");
+
+  const JournalTabs = () => (
+    <div className="mb-4">
+      <div className="inline-flex flex-wrap gap-2 border-b border-gray-200 pb-2">
+        <button
+          className={`px-3 py-2 text-sm font-semibold rounded-md ${journalTab === "header" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
+          onClick={() => setJournalTab("header")}
+        >
+          En-tête
+        </button>
+        <button
+          className={`px-3 py-2 text-sm font-semibold rounded-md ${journalTab === "rubriques" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
+          onClick={() => setJournalTab("rubriques")}
+        >
+          Rubriques disponibles
+        </button>
+      </div>
+    </div>
+  );
+
+  const journalHeaderDefs: { key: keyof JournalHeaderState; label: string }[] = [
+    { key: "dateGeneration", label: "Date de génération" },
+    { key: "heure", label: "Heure" },
+    { key: "devise", label: "Devise" },
+  ];
+
   return (
     <>
       <div className="p-6 md:p-10">
@@ -103,10 +178,7 @@ export default function Page() {
             {tile && (
               <button
                 type="button"
-                onClick={() => {
-                  setTile(null);
-                  // on ne reset pas 'dirty' pour éviter de perdre un travail non sauvegardé
-                }}
+                onClick={() => setTile(null)}
                 className="inline-flex items-center gap-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2 text-sm font-semibold"
                 aria-label="Revenir à la liste"
               >
@@ -128,43 +200,46 @@ export default function Page() {
             </section>
           )}
 
+          {/* -------- Bulletin de paie -------- */}
           {tile === 'bulletin' && (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">Bulletin de paie</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div>
-                  <h3 className="font-semibold text-gray-700 mb-3">Informations société & salarié</h3>
-                  <div className="divide-y divide-gray-200">
-                    <CheckboxRow
-                      label="Numéro CNSS société"
-                      checked={bulletinInfo.cnssSociete}
-                      onChange={(v) => setBulletinInfo((s) => ({ ...s, cnssSociete: v }))}
-                    />
-                    <CheckboxRow
-                      label="ID Fiscal société"
-                      checked={bulletinInfo.idFiscalSociete}
-                      onChange={(v) => setBulletinInfo((s) => ({ ...s, idFiscalSociete: v }))}
-                    />
-                    <CheckboxRow
-                      label="Numéro ICE société"
-                      checked={bulletinInfo.iceSociete}
-                      onChange={(v) => setBulletinInfo((s) => ({ ...s, iceSociete: v }))}
-                    />
-                    <CheckboxRow
-                      label="Numéro CNSS employé"
-                      checked={bulletinInfo.cnssEmploye}
-                      onChange={(v) => setBulletinInfo((s) => ({ ...s, cnssEmploye: v }))}
-                    />
-                    <CheckboxRow
-                      label="Numéro CIMR employé"
-                      checked={bulletinInfo.cimrEmploye}
-                      onChange={(v) => setBulletinInfo((s) => ({ ...s, cimrEmploye: v }))}
-                    />
-                  </div>
-                </div>
+              <h2 className="text-xl font-semibold text-gray-800 mb-2">Bulletin de paie</h2>
 
+              <BulletinTabs />
+
+              {bulletinTab === "info" && (
                 <div>
-                  <h3 className="font-semibold text-gray-700 mb-3">Rubriques disponibles</h3>
+                  <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr className="[&>th]:py-2 [&>th]:px-3 text-left">
+                        <th>Nom du champ</th>
+                        <th>Afficher</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {infoDefs.map(({ key, label }) => (
+                        <tr key={String(key)}>
+                          <td className="py-2 px-3">{label}</td>
+                          <td className="py-2 px-3">
+                            <input
+                              type="checkbox"
+                              checked={bulletinInfo[key]}
+                              onChange={(e) => {
+                                const v = (e.target as HTMLInputElement).checked;
+                                setBulletinInfo((s) => ({ ...s, [key]: v }));
+                                markDirty();
+                              }}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {bulletinTab === "rubriques" && (
+                <div>
                   <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
                     <thead className="bg-gray-50 text-gray-600">
                       <tr className="[&>th]:py-2 [&>th]:px-3 text-left">
@@ -198,9 +273,10 @@ export default function Page() {
                     </tbody>
                   </table>
                 </div>
+              )}
 
-                <div className="md:col-span-2">
-                  <h3 className="font-semibold text-gray-700 mb-3">Cotisations</h3>
+              {bulletinTab === "cotisations" && (
+                <div>
                   <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
                     <thead className="bg-gray-50 text-gray-600">
                       <tr className="[&>th]:py-2 [&>th]:px-3 text-left">
@@ -232,37 +308,50 @@ export default function Page() {
                     </tbody>
                   </table>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
+          {/* -------- Journal de paie -------- */}
           {tile === 'journal' && (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">Journal de paie</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div>
-                  <h3 className="font-semibold text-gray-700 mb-3">En-tête</h3>
-                  <div className="divide-y divide-gray-200">
-                    <CheckboxRow
-                      label="Date de génération"
-                      checked={journalHeader.dateGeneration}
-                      onChange={(v) => setJournalHeader((s) => ({ ...s, dateGeneration: v }))}
-                    />
-                    <CheckboxRow
-                      label="Heure"
-                      checked={journalHeader.heure}
-                      onChange={(v) => setJournalHeader((s) => ({ ...s, heure: v }))}
-                    />
-                    <CheckboxRow
-                      label="Devise"
-                      checked={journalHeader.devise}
-                      onChange={(v) => setJournalHeader((s) => ({ ...s, devise: v }))}
-                    />
-                  </div>
-                </div>
+              <h2 className="text-xl font-semibold text-gray-800 mb-2">Journal de paie</h2>
 
+              <JournalTabs />
+
+              {journalTab === "header" && (
                 <div>
-                  <h3 className="font-semibold text-gray-700 mb-3">Rubriques disponibles</h3>
+                  <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr className="[&>th]:py-2 [&>th]:px-3 text-left">
+                        <th>Nom du champ</th>
+                        <th>Afficher</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {journalHeaderDefs.map(({ key, label }) => (
+                        <tr key={String(key)}>
+                          <td className="py-2 px-3">{label}</td>
+                          <td className="py-2 px-3">
+                            <input
+                              type="checkbox"
+                              checked={journalHeader[key]}
+                              onChange={(e) => {
+                                const v = (e.target as HTMLInputElement).checked;
+                                setJournalHeader((s) => ({ ...s, [key]: v }));
+                                markDirty();
+                              }}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {journalTab === "rubriques" && (
+                <div>
                   <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
                     <thead className="bg-gray-50 text-gray-600">
                       <tr className="[&>th]:py-2 [&>th]:px-3 text-left">
@@ -296,10 +385,11 @@ export default function Page() {
                     </tbody>
                   </table>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
+          {/* -------- Autres tuiles -------- */}
           {tile === 'attestationSalaire' && (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
               <h2 className="text-xl font-semibold text-gray-800 mb-4">Attestation de salaire</h2>

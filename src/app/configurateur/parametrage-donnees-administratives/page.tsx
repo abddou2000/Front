@@ -45,6 +45,17 @@ function isBetweenExclusive(target: string, start: string, end: string) {
   return t >= s && t < e; // ≥ start && < end
 }
 
+// NEW: formateur pour l’affichage JJ-MM-AAAA
+function formatDateFR(d?: string) {
+  if (!d) return "";
+  const t = new Date(d);
+  if (Number.isNaN(t.getTime())) return "";
+  const dd = String(t.getDate()).padStart(2, "0");
+  const mm = String(t.getMonth() + 1).padStart(2, "0");
+  const yyyy = t.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
+}
+
 type ActiveTab = "societes" | "contrats" | "categories" | "statuts" | "unites";
 
 export default function Page() {
@@ -256,9 +267,10 @@ export default function Page() {
     </button>
   );
 
+  // NEW: on formate ici
   const dateCell = (value: string) => (
     <span className="inline-flex items-center rounded-md px-2 py-1 text-[11px] md:text-xs font-medium bg-slate-100 text-slate-700">
-      {value || "—"}
+      {value ? formatDateFR(value) : "—"}
     </span>
   );
 
@@ -688,15 +700,14 @@ export default function Page() {
                     if (delimTarget) setDelimError(validateDelimDate(v, delimTarget) || "");
                   }}
                 />
-                {delimTarget && (
-                  <p className="mt-1 text-[11px] text-gray-500">
-                    Période actuelle : <b>{toISO(delimTarget.startDate)}</b> → <b>{toISO(delimTarget.endDate)}</b>. La date choisie doit être ≥ début et &lt; fin actuelle.
-                  </p>
-                )}
                 {delimError && <p className="mt-2 text-xs text-red-600">{delimError}</p>}
               </div>
+
+              {/* NEW: message conditionnel lisible */}
               <p className="text-xs text-gray-500">
-                Un nouvel enregistrement démarrera le <b>{addOneDay(delimEndDate || "")}</b>. Vous pourrez le modifier immédiatement.
+                {delimEndDate
+                  ? <>Un nouvel enregistrement démarrera le <b>{formatDateFR(addOneDay(delimEndDate))}</b>. Vous pourrez le modifier immédiatement.</>
+                  : <>Le nouvel enregistrement démarrera le <i>lendemain</i> de la date que vous choisirez. Vous pourrez le modifier immédiatement.</>}
               </p>
             </div>
             <div className="mt-5 sm:mt-6 flex items-center gap-2 sm:gap-3 justify-end">

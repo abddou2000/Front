@@ -31,19 +31,44 @@ function isBetweenExclusive(target: string, start: string, end: string) {
   const e = new Date(end).getTime();
   return t >= s && t < e;
 }
-function formatDayMonth(d?: string) {
+
+// JJ-Mois (ex. "01-Janvier")
+function formatDayDashMonthName(d?: string) {
   if (!d) return "";
   const t = new Date(d);
   if (Number.isNaN(t.getTime())) return "";
-  const mm = String(t.getMonth() + 1).padStart(2, "0");
   const dd = String(t.getDate()).padStart(2, "0");
-  return `${dd}-${mm}`;
+  const m = t.toLocaleDateString("fr-FR", { month: "long" });
+  const monthCap = m.charAt(0).toUpperCase() + m.slice(1);
+  return `${dd}-${monthCap}`;
 }
+// JJ-MM-AAAA (ex. "01-01-2024")
+function formatDMY(d?: string) {
+  if (!d) return "";
+  const t = new Date(d);
+  if (Number.isNaN(t.getTime())) return "";
+  const dd = String(t.getDate()).padStart(2, "0");
+  const mm = String(t.getMonth() + 1).padStart(2, "0");
+  const yyyy = t.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
+}
+// JJ Mois AAAA (ex. "01 Janvier 2024")
+function formatDayMonthYearLong(d?: string) {
+  if (!d) return "";
+  const t = new Date(d);
+  if (Number.isNaN(t.getTime())) return "";
+  const dd = String(t.getDate()).padStart(2, "0");
+  const m = t.toLocaleDateString("fr-FR", { month: "long" });
+  const monthCap = m.charAt(0).toUpperCase() + m.slice(1);
+  const yyyy = t.getFullYear();
+  return `${dd} ${monthCap} ${yyyy}`;
+}
+
 function daysInMonth(year: number, month1to12: number) {
   return new Date(year, month1to12, 0).getDate();
 }
 
-// --- composant JJ-MM pour Fériés ---
+// --- composant JJ/MM pour Fériés (JJ AVANT MM) ---
 type DayMonthPickerProps = {
   label: string;
   value?: string;             // ISO (yyyy-mm-dd) ou vide
@@ -54,8 +79,8 @@ function DayMonthPicker({ label, value, yearRef, onChange }: DayMonthPickerProps
   const fallbackISO = `${yearRef}-01-01`;
   const base = value && toISO(value) ? value : fallbackISO;
   const dt = new Date(base);
-  const curMonth = dt.getMonth() + 1; // 1..12
-  const curDay = dt.getDate();        // 1..31
+  const curMonth = dt.getMonth() + 1;
+  const curDay = dt.getDate();
 
   const [month, setMonth] = useState<number>(curMonth);
   const [day, setDay] = useState<number>(curDay);
@@ -72,29 +97,9 @@ function DayMonthPicker({ label, value, yearRef, onChange }: DayMonthPickerProps
 
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label} (JJ-MM)</label>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
       <div className="flex gap-2">
-        <select
-          className="w-full h-11 rounded-lg bg-white border border-gray-200 px-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
-          value={month}
-          onChange={(e) => {
-            const m = Number((e.target as HTMLSelectElement).value);
-            setMonth(m);
-            const d = Math.min(safeDay, daysInMonth(yearNum, m));
-            setDay(d);
-            emit(m, d);
-          }}
-        >
-          {Array.from({ length: 12 }).map((_, i) => {
-            const m = i + 1;
-            const label = new Date(2000, i, 1).toLocaleDateString(undefined, { month: "long" });
-            return (
-              <option key={m} value={m}>
-                {String(m).padStart(2, "0")} — {label}
-              </option>
-            );
-          })}
-        </select>
+        {/* JJ d'abord */}
         <select
           className="w-full h-11 rounded-lg bg-white border border-gray-200 px-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
           value={safeDay}
@@ -109,6 +114,30 @@ function DayMonthPicker({ label, value, yearRef, onChange }: DayMonthPickerProps
             return (
               <option key={d} value={d}>
                 {String(d).padStart(2, "0")}
+              </option>
+            );
+          })}
+        </select>
+
+        {/* MM ensuite */}
+        <select
+          className="w-full h-11 rounded-lg bg-white border border-gray-200 px-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+          value={month}
+          onChange={(e) => {
+            const m = Number((e.target as HTMLSelectElement).value);
+            setMonth(m);
+            const d = Math.min(safeDay, daysInMonth(yearNum, m));
+            setDay(d);
+            emit(m, d);
+          }}
+        >
+          {Array.from({ length: 12 }).map((_, i) => {
+            const m = i + 1;
+            const raw = new Date(2000, i, 1).toLocaleDateString("fr-FR", { month: "long" });
+            const fr = raw.charAt(0).toUpperCase() + raw.slice(1);
+            return (
+              <option key={m} value={m}>
+                {String(m).padStart(2, "0")} — {fr}
               </option>
             );
           })}
@@ -140,7 +169,6 @@ export default function Page() {
     endDate: string;
   };
 
-  // valeur spéciale pour "tout voir"
   const ALL = "__ALL__";
 
   const [activeTab, setActiveTab] = useState<"feries" | "absences">("feries");
@@ -200,9 +228,8 @@ export default function Page() {
     const maxY = Math.max(...years);
     return Array.from({ length: maxY - minY + 1 }, (_, i) => (minY + i).toString());
   }
-  const yearOptions = React.useMemo(() => {
+  const yearOptions = useMemo(() => {
     const opts = getYearRangeFromHolidays(holidays);
-    // si l’année choisie n’est pas dans la liste (ex: saisie manuelle), on l’ajoute pour ne pas “perdre” la sélection
     if (yearFilter !== ALL && !opts.includes(yearFilter)) {
       return [...opts, yearFilter].sort();
     }
@@ -228,8 +255,7 @@ export default function Page() {
   };
   const executeDelete = () => {
     if (!toDelete) return;
-    if (activeTab === "feries")
-      setHolidays((prev) => prev.filter((r) => r.id !== toDelete.id));
+    if (activeTab === "feries") setHolidays((prev) => prev.filter((r) => r.id !== toDelete.id));
     else setLeaveTypes((prev) => prev.filter((r) => r.id !== toDelete.id));
     setConfirmOpen(false);
     setToDelete(null);
@@ -272,8 +298,7 @@ export default function Page() {
       return;
     }
 
-    const originalEndDate =
-      activeTab === "feries" ? delimTarget.validFin : delimTarget.endDate;
+    const originalEndDate = activeTab === "feries" ? delimTarget.validFin : delimTarget.endDate;
 
     const newVersion =
       activeTab === "feries"
@@ -318,19 +343,11 @@ export default function Page() {
   const saveForm = () => {
     const saveStandard = () => {
       if (activeTab === "feries") {
-        if (editingId == null)
-          setHolidays((prev) => [{ id: Date.now(), ...formValues }, ...prev]);
-        else
-          setHolidays((prev) =>
-            prev.map((r) => (r.id === editingId ? { ...r, ...formValues } : r))
-          );
+        if (editingId == null) setHolidays((prev) => [{ id: Date.now(), ...formValues }, ...prev]);
+        else setHolidays((prev) => prev.map((r) => (r.id === editingId ? { ...r, ...formValues } : r)));
       } else {
-        if (editingId == null)
-          setLeaveTypes((prev) => [{ id: Date.now(), ...formValues }, ...prev]);
-        else
-          setLeaveTypes((prev) =>
-            prev.map((r) => (r.id === editingId ? { ...r, ...formValues } : r))
-          );
+        if (editingId == null) setLeaveTypes((prev) => [{ id: Date.now(), ...formValues }, ...prev]);
+        else setLeaveTypes((prev) => prev.map((r) => (r.id === editingId ? { ...r, ...formValues } : r)));
       }
     };
 
@@ -392,16 +409,14 @@ export default function Page() {
     return holidays.filter((h) => (h.validDebut || "").startsWith(yearFilter));
   }, [holidays, yearFilter]);
 
-  const datePill = (value: string) => (
+  const pill = (text?: string) => (
     <span className="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium bg-slate-100 text-slate-700">
-      {value || "—"}
+      {text && text.trim() ? text : "—"}
     </span>
   );
-  const datePillDM = (value: string) => datePill(value ? formatDayMonth(value) : "");
 
   // année de référence pour le picker JJ-MM si "toutes" est sélectionné
-  const yearForPicker =
-    yearFilter === ALL ? new Date().getFullYear().toString() : yearFilter;
+  const yearForPicker = yearFilter === ALL ? new Date().getFullYear().toString() : yearFilter;
 
   return (
     <>
@@ -411,9 +426,7 @@ export default function Page() {
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-2">
               <div aria-hidden className="w-10 h-10 shrink-0 sm:hidden" />
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
-                Paramétrage des données des temps
-              </h1>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Paramétrage des données des temps</h1>
             </div>
           </div>
 
@@ -454,7 +467,6 @@ export default function Page() {
                     value={yearFilter}
                     onChange={(e) => setYearFilter((e.target as HTMLSelectElement).value)}
                   >
-                    {/* Option "Voir toutes les entrées" en tête de liste */}
                     <option value={ALL}>Voir toutes les entrées</option>
                     {yearOptions.map((y) => (
                       <option key={y} value={y}>
@@ -491,12 +503,15 @@ export default function Page() {
                       <tr key={row.id} className="hover:bg-gray-50 transition-colors">
                         <td className="py-3 px-3 sm:px-4 font-semibold text-gray-800">{row.code}</td>
                         <td className="py-3 px-3 sm:px-4 text-gray-700">{row.nom}</td>
-                        {/* JJ-MM pour les dates de l’évènement */}
-                        <td className="py-3 px-3 sm:px-4">{datePillDM(row.dateDebut)}</td>
-                        <td className="py-3 px-3 sm:px-4">{datePillDM(row.dateFin)}</td>
-                        {/* validités inchangées */}
-                        <td className="py-3 px-3 sm:px-4">{datePill(toISO(row.validDebut))}</td>
-                        <td className="py-3 px-3 sm:px-4">{datePill(toISO(row.validFin))}</td>
+
+                        {/* JJ-Mois pour l’évènement */}
+                        <td className="py-3 px-3 sm:px-4">{pill(formatDayDashMonthName(row.dateDebut))}</td>
+                        <td className="py-3 px-3 sm:px-4">{pill(formatDayDashMonthName(row.dateFin))}</td>
+
+                        {/* Validités en JJ-MM-AAAA */}
+                        <td className="py-3 px-3 sm:px-4">{pill(formatDMY(toISO(row.validDebut)))}</td>
+                        <td className="py-3 px-3 sm:px-4">{pill(formatDMY(toISO(row.validFin)))}</td>
+
                         <td className="py-3 px-3 sm:px-4 text-gray-700">{row.recurrence ? "Oui" : "Non"}</td>
                         <td className="py-3 px-3 sm:px-4">
                           <div className="flex items-center justify-end gap-1 text-gray-500">
@@ -526,7 +541,7 @@ export default function Page() {
             </div>
           )}
 
-          {/* Absences (inchangé) */}
+          {/* Absences */}
           {activeTab === "absences" && (
             <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-100">
               <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
@@ -560,8 +575,11 @@ export default function Page() {
                         <td className="py-3 px-3 sm:px-4 text-gray-700">{row.code}</td>
                         <td className="py-3 px-3 sm:px-4 text-gray-700">{row.decompte ? "Oui" : "Non"}</td>
                         <td className="py-3 px-3 sm:px-4 text-gray-700">{row.justificatif ? "Oui" : "Non"}</td>
-                        <td className="py-3 px-3 sm:px-4">{datePill(toISO(row.startDate))}</td>
-                        <td className="py-3 px-3 sm:px-4">{datePill(toISO(row.endDate))}</td>
+
+                        {/* ✅ Absences en JJ-MM-AAAA */}
+                        <td className="py-3 px-3 sm:px-4">{pill(formatDMY(toISO(row.startDate)))}</td>
+                        <td className="py-3 px-3 sm:px-4">{pill(formatDMY(toISO(row.endDate)))}</td>
+
                         <td className="py-3 px-3 sm:px-4">
                           <div className="flex items-center justify-end gap-1 text-gray-500">
                             <button onClick={() => openEdit(row)} className="p-2 hover:bg-gray-100 rounded-md hover:text-blue-600" title="Modifier">
@@ -628,7 +646,7 @@ export default function Page() {
                   />
                 </div>
 
-                {/* JJ-MM via sélecteurs */}
+                {/* JJ-MM via sélecteurs (JJ avant MM) */}
                 <DayMonthPicker
                   label="Date début"
                   value={formValues.dateDebut}
@@ -642,7 +660,7 @@ export default function Page() {
                   onChange={(iso) => setFormValues({ ...formValues, dateFin: iso })}
                 />
 
-                {/* validité: inchangé */}
+                {/* validité en JJ-MM-AAAA */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Début validité</label>
                   <input
@@ -780,14 +798,20 @@ export default function Page() {
                 {delimTarget && (
                   <p className="mt-1 text-[11px] text-gray-500">
                     Période actuelle :{" "}
-                    <b>{activeTab === "feries" ? toISO(delimTarget.validDebut) : toISO(delimTarget.startDate)}</b> →{" "}
-                    <b>{activeTab === "feries" ? toISO(delimTarget.validFin) : toISO(delimTarget.endDate)}</b>. La date choisie doit être ≥ début et &lt; fin actuelle.
+                    <b>{activeTab === "feries" ? formatDMY(toISO(delimTarget.validDebut)) : formatDMY(toISO(delimTarget.startDate))}</b>{" "}
+                    →{" "}
+                    <b>{activeTab === "feries" ? formatDMY(toISO(delimTarget.validFin)) : formatDMY(toISO(delimTarget.endDate))}</b>.{" "}
+                    La date choisie doit être ≥ début et &lt; fin actuelle.
                   </p>
                 )}
                 {delimError && <p className="mt-2 text-xs text-red-600">{delimError}</p>}
               </div>
+
+              {/* Message "lendemain" conditionnel (reste en version longue, plus lisible) */}
               <p className="text-xs text-gray-500">
-                Un nouvel enregistrement démarrera le <b>{addOneDay(delimEndDate || "")}</b>. Vous pourrez le modifier immédiatement.
+                {delimEndDate
+                  ? <>Un nouvel enregistrement démarrera le <b>{formatDayMonthYearLong(addOneDay(delimEndDate))}</b>. Vous pourrez le modifier immédiatement.</>
+                  : <>Le nouvel enregistrement démarrera le <i>lendemain</i> de la date que vous choisirez. Vous pourrez le modifier immédiatement.</>}
               </p>
             </div>
             <div className="mt-6 flex items-center gap-3 justify-end">

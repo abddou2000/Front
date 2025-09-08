@@ -31,6 +31,17 @@ function isBetweenExclusive(target: string, start: string, end: string) {
   return t >= s && t < e; // ≥ start && < end
 }
 
+// --- NEW: formatteur JJ-MM-AAAA pour affichage ---
+function formatDateFR(d?: string) {
+  if (!d) return "";
+  const t = new Date(d);
+  if (Number.isNaN(t.getTime())) return "";
+  const dd = String(t.getDate()).padStart(2, "0");
+  const mm = String(t.getMonth() + 1).padStart(2, "0");
+  const yyyy = t.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
+}
+
 export default function Page() {
   type Prime = {
     id: number;
@@ -116,6 +127,10 @@ export default function Page() {
   const confirmDelimitation = () => {
     if (!delimTarget) return;
     const newEnd = toISO(delimEndDate);
+    if (!newEnd) {
+      setDelimError("Veuillez choisir une date de fin.");
+      return;
+    }
     const err = validateDelimDate(newEnd, delimTarget);
     if (err) {
       setDelimError(err);
@@ -202,7 +217,6 @@ export default function Page() {
           startDate: addOneDay(newEndDate),
           endDate: originalEndDate,
         };
-        // Nettoyer flags internes si traînent
         (newEntry as any)._isDelimitation && delete (newEntry as any)._isDelimitation;
         (newEntry as any)._delimitationData && delete (newEntry as any)._delimitationData;
         return [newEntry, ...updated];
@@ -218,9 +232,10 @@ export default function Page() {
     });
   };
 
+  // --- NEW: cellule avec affichage JJ-MM-AAAA ---
   const dateCell = (value: string) => (
     <span className="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium bg-slate-100 text-slate-700">
-      {value || "—"}
+      {value ? formatDateFR(value) : "—"}
     </span>
   );
 
@@ -389,7 +404,6 @@ export default function Page() {
                     setFormValues({
                       ...formValues,
                       typeMontant: (e.target as HTMLSelectElement).value,
-                      // On ne vide pas nécessairement les autres, la normalisation gère
                     })
                   }
                 >
@@ -485,7 +499,7 @@ export default function Page() {
               )}
 
               <div>
-                <label className="block text_sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Soumis à cotisation
                 </label>
                 <select
@@ -637,21 +651,15 @@ export default function Page() {
                     }
                   }}
                 />
-                {delimTarget && (
-                  <p className="mt-1 text-[11px] text-gray-500">
-                    Période actuelle : <b>{toISO(delimTarget.startDate)}</b> →
-                    <b> {toISO(delimTarget.endDate)}</b>. La date choisie doit
-                    être ≥ début et &lt; fin actuelle.
-                  </p>
-                )}
                 {delimError && (
                   <p className="mt-2 text-xs text-red-600">{delimError}</p>
                 )}
               </div>
+              {/* NEW: message conditionnel sans blanc après "le" */}
               <p className="text-xs text-gray-500">
-                Un nouvel enregistrement démarrera le{" "}
-                <b>{addOneDay(delimEndDate || "")}</b>. Vous pourrez le modifier
-                immédiatement.
+                {delimEndDate
+                  ? <>Un nouvel enregistrement démarrera le <b>{formatDateFR(addOneDay(delimEndDate))}</b>. Vous pourrez le modifier immédiatement.</>
+                  : <>Le nouvel enregistrement démarrera le <i>lendemain</i> de la date que vous choisirez. Vous pourrez le modifier immédiatement.</>}
               </p>
             </div>
             <div className="mt-6 flex items-center gap-3 justify-end">
