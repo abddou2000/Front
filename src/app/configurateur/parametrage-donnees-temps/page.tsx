@@ -1,22 +1,12 @@
 "use client";
 import React, { useMemo, useState } from "react";
 import "animate.css";
-
-// Sidebar handled by layout.tsx
-import {
-  CalendarClock,
-  ClipboardList,
-  Plus,
-  Edit3,
-  Trash2,
-  Save,
-  X,
-} from "lucide-react";
+import { CalendarClock, ClipboardList, Plus, Edit3, Trash2, Save, X } from "lucide-react";
 
 import { SuccessToast } from "../../components/SuccessToast";
 import { ConfirmDeleteModal } from "../../components/ConfirmDeleteModal";
 
-// --- helpers ---
+// --- helpers généraux ---
 function addOneDay(dateString: string): string {
   if (!dateString) return "";
   const date = new Date(dateString);
@@ -39,9 +29,96 @@ function isBetweenExclusive(target: string, start: string, end: string) {
   const t = new Date(target).getTime();
   const s = new Date(start).getTime();
   const e = new Date(end).getTime();
-  return t >= s && t < e; // ≥ start && < end
+  return t >= s && t < e;
+}
+function formatDayMonth(d?: string) {
+  if (!d) return "";
+  const t = new Date(d);
+  if (Number.isNaN(t.getTime())) return "";
+  const mm = String(t.getMonth() + 1).padStart(2, "0");
+  const dd = String(t.getDate()).padStart(2, "0");
+  return `${dd}-${mm}`;
+}
+function daysInMonth(year: number, month1to12: number) {
+  return new Date(year, month1to12, 0).getDate();
 }
 
+// --- composant JJ-MM pour Fériés ---
+type DayMonthPickerProps = {
+  label: string;
+  value?: string;             // ISO (yyyy-mm-dd) ou vide
+  yearRef: string;            // année (string) pour composer l’ISO
+  onChange: (iso: string) => void;
+};
+function DayMonthPicker({ label, value, yearRef, onChange }: DayMonthPickerProps) {
+  const fallbackISO = `${yearRef}-01-01`;
+  const base = value && toISO(value) ? value : fallbackISO;
+  const dt = new Date(base);
+  const curMonth = dt.getMonth() + 1; // 1..12
+  const curDay = dt.getDate();        // 1..31
+
+  const [month, setMonth] = useState<number>(curMonth);
+  const [day, setDay] = useState<number>(curDay);
+
+  const yearNum = parseInt(yearRef, 10);
+  const maxDay = daysInMonth(yearNum, month);
+  const safeDay = Math.min(day, maxDay);
+
+  const emit = (m: number, d: number) => {
+    const mm = String(m).padStart(2, "0");
+    const dd = String(d).padStart(2, "0");
+    onChange(`${yearRef}-${mm}-${dd}`);
+  };
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label} (JJ-MM)</label>
+      <div className="flex gap-2">
+        <select
+          className="w-full h-11 rounded-lg bg-white border border-gray-200 px-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+          value={month}
+          onChange={(e) => {
+            const m = Number((e.target as HTMLSelectElement).value);
+            setMonth(m);
+            const d = Math.min(safeDay, daysInMonth(yearNum, m));
+            setDay(d);
+            emit(m, d);
+          }}
+        >
+          {Array.from({ length: 12 }).map((_, i) => {
+            const m = i + 1;
+            const label = new Date(2000, i, 1).toLocaleDateString(undefined, { month: "long" });
+            return (
+              <option key={m} value={m}>
+                {String(m).padStart(2, "0")} — {label}
+              </option>
+            );
+          })}
+        </select>
+        <select
+          className="w-full h-11 rounded-lg bg-white border border-gray-200 px-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+          value={safeDay}
+          onChange={(e) => {
+            const d = Number((e.target as HTMLSelectElement).value);
+            setDay(d);
+            emit(month, d);
+          }}
+        >
+          {Array.from({ length: maxDay }).map((_, i) => {
+            const d = i + 1;
+            return (
+              <option key={d} value={d}>
+                {String(d).padStart(2, "0")}
+              </option>
+            );
+          })}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+// --- composant principal ---
 export default function Page() {
   type Holiday = {
     id: number;
@@ -62,6 +139,9 @@ export default function Page() {
     startDate: string;
     endDate: string;
   };
+
+  // valeur spéciale pour "tout voir"
+  const ALL = "__ALL__";
 
   const [activeTab, setActiveTab] = useState<"feries" | "absences">("feries");
   const [yearFilter, setYearFilter] = useState<string>(new Date().getFullYear().toString());
@@ -103,6 +183,32 @@ export default function Page() {
   const [delimEndDate, setDelimEndDate] = useState<string>("");
   const [delimError, setDelimError] = useState<string>("");
 
+  // --- Années dynamiques depuis les données (min validDebut → max validFin) ---
+  function getYearRangeFromHolidays(rows: { validDebut?: string; validFin?: string }[]) {
+    const years: number[] = [];
+    rows.forEach((r) => {
+      const s = toISO(r.validDebut);
+      const e = toISO(r.validFin);
+      if (s) years.push(new Date(s).getFullYear());
+      if (e) years.push(new Date(e).getFullYear());
+    });
+    if (years.length === 0) {
+      const cy = new Date().getFullYear();
+      return Array.from({ length: 6 }, (_, i) => (cy - 2 + i).toString());
+    }
+    const minY = Math.min(...years);
+    const maxY = Math.max(...years);
+    return Array.from({ length: maxY - minY + 1 }, (_, i) => (minY + i).toString());
+  }
+  const yearOptions = React.useMemo(() => {
+    const opts = getYearRangeFromHolidays(holidays);
+    // si l’année choisie n’est pas dans la liste (ex: saisie manuelle), on l’ajoute pour ne pas “perdre” la sélection
+    if (yearFilter !== ALL && !opts.includes(yearFilter)) {
+      return [...opts, yearFilter].sort();
+    }
+    return opts;
+  }, [holidays, yearFilter]);
+
   // --- actions ---
   const openCreate = () => {
     setEditingId(null);
@@ -112,7 +218,7 @@ export default function Page() {
 
   const openEdit = (row: any) => {
     setEditingId(row.id);
-    setFormValues(JSON.parse(JSON.stringify(row))); // clone pour éviter les effets de bord
+    setFormValues(JSON.parse(JSON.stringify(row))); // clone
     setIsModalOpen(true);
   };
 
@@ -169,7 +275,6 @@ export default function Page() {
     const originalEndDate =
       activeTab === "feries" ? delimTarget.validFin : delimTarget.endDate;
 
-    // Préparer l’édition de la nouvelle version (la coupe réelle se fera au save)
     const newVersion =
       activeTab === "feries"
         ? {
@@ -211,7 +316,6 @@ export default function Page() {
   };
 
   const saveForm = () => {
-    // Cas standard
     const saveStandard = () => {
       if (activeTab === "feries") {
         if (editingId == null)
@@ -230,7 +334,6 @@ export default function Page() {
       }
     };
 
-    // Cas délimitation : couper l’ancienne ligne + créer la nouvelle avec les champs modifiés
     const saveDelimitation = () => {
       const data = formValues._delimitationData;
       if (!data) return saveStandard();
@@ -283,22 +386,28 @@ export default function Page() {
     setToast({ show: true, message: "Enregistrement effectué." });
   };
 
-  const filteredHolidays = useMemo(
-    () => holidays.filter((h) => (h.validDebut || "").startsWith(yearFilter)),
-    [holidays, yearFilter]
-  );
+  // -- filtre : si "toutes", on ne filtre pas --
+  const filteredHolidays = useMemo(() => {
+    if (yearFilter === ALL) return holidays;
+    return holidays.filter((h) => (h.validDebut || "").startsWith(yearFilter));
+  }, [holidays, yearFilter]);
 
-  const dateCell = (value: string) => (
+  const datePill = (value: string) => (
     <span className="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium bg-slate-100 text-slate-700">
       {value || "—"}
     </span>
   );
+  const datePillDM = (value: string) => datePill(value ? formatDayMonth(value) : "");
+
+  // année de référence pour le picker JJ-MM si "toutes" est sélectionné
+  const yearForPicker =
+    yearFilter === ALL ? new Date().getFullYear().toString() : yearFilter;
 
   return (
     <>
       <div className="pt-3 sm:pt-0 p-4 sm:p-6 lg:p-10">
         <div className="max-w-7xl mx-auto">
-          {/* Titre + anti recouvrement hamburger */}
+          {/* Titre */}
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-2">
               <div aria-hidden className="w-10 h-10 shrink-0 sm:hidden" />
@@ -345,14 +454,13 @@ export default function Page() {
                     value={yearFilter}
                     onChange={(e) => setYearFilter((e.target as HTMLSelectElement).value)}
                   >
-                    {Array.from({ length: 6 }).map((_, idx) => {
-                      const y = (new Date().getFullYear() - 2 + idx).toString();
-                      return (
-                        <option key={y} value={y}>
-                          {y}
-                        </option>
-                      );
-                    })}
+                    {/* Option "Voir toutes les entrées" en tête de liste */}
+                    <option value={ALL}>Voir toutes les entrées</option>
+                    {yearOptions.map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <button
@@ -383,10 +491,12 @@ export default function Page() {
                       <tr key={row.id} className="hover:bg-gray-50 transition-colors">
                         <td className="py-3 px-3 sm:px-4 font-semibold text-gray-800">{row.code}</td>
                         <td className="py-3 px-3 sm:px-4 text-gray-700">{row.nom}</td>
-                        <td className="py-3 px-3 sm:px-4">{dateCell(row.dateDebut)}</td>
-                        <td className="py-3 px-3 sm:px-4">{dateCell(row.dateFin)}</td>
-                        <td className="py-3 px-3 sm:px-4">{dateCell(row.validDebut)}</td>
-                        <td className="py-3 px-3 sm:px-4">{dateCell(row.validFin)}</td>
+                        {/* JJ-MM pour les dates de l’évènement */}
+                        <td className="py-3 px-3 sm:px-4">{datePillDM(row.dateDebut)}</td>
+                        <td className="py-3 px-3 sm:px-4">{datePillDM(row.dateFin)}</td>
+                        {/* validités inchangées */}
+                        <td className="py-3 px-3 sm:px-4">{datePill(toISO(row.validDebut))}</td>
+                        <td className="py-3 px-3 sm:px-4">{datePill(toISO(row.validFin))}</td>
                         <td className="py-3 px-3 sm:px-4 text-gray-700">{row.recurrence ? "Oui" : "Non"}</td>
                         <td className="py-3 px-3 sm:px-4">
                           <div className="flex items-center justify-end gap-1 text-gray-500">
@@ -406,7 +516,7 @@ export default function Page() {
                     {filteredHolidays.length === 0 && (
                       <tr>
                         <td colSpan={8} className="py-8 text-center text-gray-500">
-                          Aucun jour férié pour cette année.
+                          Aucun jour férié {yearFilter === ALL ? "" : `pour ${yearFilter}`}.
                         </td>
                       </tr>
                     )}
@@ -416,7 +526,7 @@ export default function Page() {
             </div>
           )}
 
-          {/* Absences */}
+          {/* Absences (inchangé) */}
           {activeTab === "absences" && (
             <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-100">
               <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
@@ -450,8 +560,8 @@ export default function Page() {
                         <td className="py-3 px-3 sm:px-4 text-gray-700">{row.code}</td>
                         <td className="py-3 px-3 sm:px-4 text-gray-700">{row.decompte ? "Oui" : "Non"}</td>
                         <td className="py-3 px-3 sm:px-4 text-gray-700">{row.justificatif ? "Oui" : "Non"}</td>
-                        <td className="py-3 px-3 sm:px-4">{dateCell(row.startDate)}</td>
-                        <td className="py-3 px-3 sm:px-4">{dateCell(row.endDate)}</td>
+                        <td className="py-3 px-3 sm:px-4">{datePill(toISO(row.startDate))}</td>
+                        <td className="py-3 px-3 sm:px-4">{datePill(toISO(row.endDate))}</td>
                         <td className="py-3 px-3 sm:px-4">
                           <div className="flex items-center justify-end gap-1 text-gray-500">
                             <button onClick={() => openEdit(row)} className="p-2 hover:bg-gray-100 rounded-md hover:text-blue-600" title="Modifier">
@@ -503,43 +613,55 @@ export default function Page() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Code</label>
-                  <input className="w-full h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
-                         value={formValues.code || ""} onChange={(e) => setFormValues({ ...formValues, code: (e.target as HTMLInputElement).value })} />
+                  <input
+                    className="w-full h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formValues.code || ""}
+                    onChange={(e) => setFormValues({ ...formValues, code: (e.target as HTMLInputElement).value })}
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Nom</label>
-                  <input className="w-full h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
-                         value={formValues.nom || ""} onChange={(e) => setFormValues({ ...formValues, nom: (e.target as HTMLInputElement).value })} />
+                  <input
+                    className="w-full h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formValues.nom || ""}
+                    onChange={(e) => setFormValues({ ...formValues, nom: (e.target as HTMLInputElement).value })}
+                  />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date début</label>
-                  <input type="date" className="w-full h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
-                         value={formValues.dateDebut || ""} onChange={(e) => setFormValues({ ...formValues, dateDebut: (e.target as HTMLInputElement).value })} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date fin</label>
-                  <input type="date" className="w-full h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
-                         value={formValues.dateFin || ""} onChange={(e) => setFormValues({ ...formValues, dateFin: (e.target as HTMLInputElement).value })} />
-                </div>
+
+                {/* JJ-MM via sélecteurs */}
+                <DayMonthPicker
+                  label="Date début"
+                  value={formValues.dateDebut}
+                  yearRef={yearForPicker}
+                  onChange={(iso) => setFormValues({ ...formValues, dateDebut: iso })}
+                />
+                <DayMonthPicker
+                  label="Date fin"
+                  value={formValues.dateFin}
+                  yearRef={yearForPicker}
+                  onChange={(iso) => setFormValues({ ...formValues, dateFin: iso })}
+                />
+
+                {/* validité: inchangé */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Début validité</label>
-                  <input type="date" className="w-full h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
-                         value={formValues.validDebut || ""} onChange={(e) => setFormValues({ ...formValues, validDebut: (e.target as HTMLInputElement).value })} />
+                  <input
+                    type="date"
+                    className="w-full h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formValues.validDebut || ""}
+                    onChange={(e) => setFormValues({ ...formValues, validDebut: (e.target as HTMLInputElement).value })}
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Fin validité</label>
-                  <input type="date" className="w-full h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
-                         value={formValues.validFin || ""} onChange={(e) => setFormValues({ ...formValues, validFin: (e.target as HTMLInputElement).value })} />
+                  <input
+                    type="date"
+                    className="w-full h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formValues.validFin || ""}
+                    onChange={(e) => setFormValues({ ...formValues, validFin: (e.target as HTMLInputElement).value })}
+                  />
                 </div>
-                <div className="md:col-span-2">
-                  <button
-                    type="button"
-                    onClick={() => setFormValues({ ...formValues, validDebut: addOneDay(formValues.validFin || "") })}
-                    className="mt-1 inline-flex items-center gap-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2 text-sm font-medium"
-                  >
-                    Délimiter date de Fin/Début
-                  </button>
-                </div>
+
                 <div className="md:col-span-2">
                   <label className="inline-flex items-center gap-2 text-sm text-gray-700">
                     <input
@@ -555,50 +677,59 @@ export default function Page() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Nom</label>
-                  <input className="w-full h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
-                         value={formValues.nom || ""} onChange={(e) => setFormValues({ ...formValues, nom: (e.target as HTMLInputElement).value })} />
+                  <input
+                    className="w-full h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formValues.nom || ""}
+                    onChange={(e) => setFormValues({ ...formValues, nom: (e.target as HTMLInputElement).value })}
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Code</label>
-                  <input className="w-full h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
-                         value={formValues.code || ""} onChange={(e) => setFormValues({ ...formValues, code: (e.target as HTMLInputElement).value })} />
+                  <input
+                    className="w-full h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formValues.code || ""}
+                    onChange={(e) => setFormValues({ ...formValues, code: (e.target as HTMLInputElement).value })}
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Décompte dans le solde</label>
-                  <select className="w-full h-11 rounded-lg bg-white border border-gray-200 px-3 text-sm text-gray-600 outline-none focus:ring-2 focus:ring-blue-500"
-                          value={formValues.decompte ? "Oui" : "Non"}
-                          onChange={(e) => setFormValues({ ...formValues, decompte: (e.target as HTMLSelectElement).value === "Oui" })}>
+                  <select
+                    className="w-full h-11 rounded-lg bg-white border border-gray-200 px-3 text-sm text-gray-600 outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formValues.decompte ? "Oui" : "Non"}
+                    onChange={(e) => setFormValues({ ...formValues, decompte: (e.target as HTMLSelectElement).value === "Oui" })}
+                  >
                     <option>Oui</option>
                     <option>Non</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Justificatif requis</label>
-                  <select className="w-full h-11 rounded-lg bg-white border border-gray-200 px-3 text-sm text-gray-600 outline-none focus:ring-2 focus:ring-blue-500"
-                          value={formValues.justificatif ? "Oui" : "Non"}
-                          onChange={(e) => setFormValues({ ...formValues, justificatif: (e.target as HTMLSelectElement).value === "Oui" })}>
+                  <select
+                    className="w-full h-11 rounded-lg bg-white border border-gray-200 px-3 text-sm text-gray-600 outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formValues.justificatif ? "Oui" : "Non"}
+                    onChange={(e) => setFormValues({ ...formValues, justificatif: (e.target as HTMLSelectElement).value === "Oui" })}
+                  >
                     <option>Oui</option>
                     <option>Non</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Date début</label>
-                  <input type="date" className="w-full h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
-                         value={formValues.startDate || ""} onChange={(e) => setFormValues({ ...formValues, startDate: (e.target as HTMLInputElement).value })} />
+                  <input
+                    type="date"
+                    className="w-full h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formValues.startDate || ""}
+                    onChange={(e) => setFormValues({ ...formValues, startDate: (e.target as HTMLInputElement).value })}
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Date fin</label>
-                  <input type="date" className="w-full h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
-                         value={formValues.endDate || ""} onChange={(e) => setFormValues({ ...formValues, endDate: (e.target as HTMLInputElement).value })} />
-                </div>
-                <div className="md:col-span-2">
-                  <button
-                    type="button"
-                    onClick={() => setFormValues({ ...formValues, startDate: addOneDay(formValues.endDate || "") })}
-                    className="mt-1 inline-flex items-center gap-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2 text-sm font-medium"
-                  >
-                    Délimiter date de Fin/Début
-                  </button>
+                  <input
+                    type="date"
+                    className="w-full h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formValues.endDate || ""}
+                    onChange={(e) => setFormValues({ ...formValues, endDate: (e.target as HTMLInputElement).value })}
+                  />
                 </div>
               </div>
             )}
@@ -672,7 +803,12 @@ export default function Page() {
       )}
 
       <SuccessToast show={toast.show} message={toast.message} onClose={() => setToast({ show: false, message: "" })} />
-      <ConfirmDeleteModal isOpen={confirmOpen} onClose={() => setConfirmOpen(false)} onConfirm={executeDelete} userName={toDelete ? "cet élément" : null} />
+      <ConfirmDeleteModal
+        isOpen={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={executeDelete}
+        userName={toDelete ? "cet élément" : null}
+      />
     </>
   );
 }
